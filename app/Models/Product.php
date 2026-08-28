@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Product extends Model
 {
     protected $fillable = [
+        'type',
         'category_id',
         'title',
         'description',
@@ -27,7 +28,8 @@ class Product extends Model
 
     public function getFormattedFileSizeAttribute()
     {
-        if (!$this->file_size) return null;
+        if (!$this->file_size)
+            return null;
         $bytes = (int) $this->file_size;
         $units = ['B', 'KB', 'MB', 'GB'];
         $i = 0;

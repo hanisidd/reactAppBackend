@@ -23,13 +23,14 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $request->validate([
+            'type' => 'required|in:digital,physical',
             'category_id' => 'required|exists:categories,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'quantity' => 'required|integer|min:0',
             'status' => 'required|in:active,inactive',
-            'digital_file' => 'required|file|mimes:zip,pdf,txt,epub,doc,docx,rar|max:51200', // 50MB Max
+            'digital_file' => 'required_if:type,digital|nullable|file|mimes:zip,pdf,txt,epub,doc,docx,rar|max:51200',
             'images' => 'nullable|array|max:15',
             'images.*' => 'image|mimes:jpeg,png,jpg,webp|max:2048',
             'cover_index' => 'nullable|integer',
@@ -39,8 +40,8 @@ class ProductController extends Controller
         $originalName = null;
         $fileSize = null;
 
-        // Store Digital Product File
-        if ($request->hasFile('digital_file')) {
+        // Process file only if product type is digital
+        if ($request->type === 'digital' && $request->hasFile('digital_file')) {
             $file = $request->file('digital_file');
             $originalName = $file->getClientOriginalName();
             $fileSize = $file->getSize();
@@ -48,6 +49,7 @@ class ProductController extends Controller
         }
 
         $product = Product::create([
+            'type' => $request->type,
             'category_id' => $request->category_id,
             'title' => $request->title,
             'description' => $request->description,
@@ -83,6 +85,7 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
 
         $request->validate([
+            'type' => 'required|in:digital,physical',
             'category_id' => 'required|exists:categories,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -96,13 +99,19 @@ class ProductController extends Controller
             'retained_image_ids' => 'nullable|array',
         ]);
 
-        // Update digital file if a new file is uploaded
-        if ($request->hasFile('digital_file')) {
-            // Delete old file
+        // Handle digital file update or conversion to physical
+        if ($request->type === 'physical') {
+            // If switched to physical, delete old file if present
             if ($product->file_path && Storage::disk('public')->exists($product->file_path)) {
                 Storage::disk('public')->delete($product->file_path);
             }
-
+            $product->file_path = null;
+            $product->file_original_name = null;
+            $product->file_size = null;
+        } elseif ($request->hasFile('digital_file')) {
+            if ($product->file_path && Storage::disk('public')->exists($product->file_path)) {
+                Storage::disk('public')->delete($product->file_path);
+            }
             $file = $request->file('digital_file');
             $product->file_original_name = $file->getClientOriginalName();
             $product->file_size = $file->getSize();
@@ -110,6 +119,7 @@ class ProductController extends Controller
         }
 
         $product->update([
+            'type' => $request->type,
             'category_id' => $request->category_id,
             'title' => $request->title,
             'description' => $request->description,
@@ -118,7 +128,7 @@ class ProductController extends Controller
             'status' => $request->status,
         ]);
 
-        // Retain / Reorder / Delete product images
+        // Images retaining & ordering
         $retainedIds = $request->input('retained_image_ids', []);
         $imagesToDelete = $product->images()->whereNotIn('id', $retainedIds)->get();
 
@@ -157,7 +167,6 @@ class ProductController extends Controller
             'product' => $product->load(['category', 'images']),
         ]);
     }
-
     public function toggleStatus($id)
     {
         $product = Product::findOrFail($id);

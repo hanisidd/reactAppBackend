@@ -8,14 +8,28 @@ use Illuminate\Support\Str;
 class Order extends Model
 {
     protected $fillable = [
+        'user_id',
         'order_number',
         'customer_name',
         'customer_email',
+        'customer_phone',
+        'shipping_address',
         'product_id',
+        'subtotal',
+        'delivery_fee',
+        'tax_amount',
+        'discount_amount',
         'total_amount',
+        'payment_method',
+        'payment_status',
         'status',
         'email_sent_at',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 
     protected static function booted()
     {
