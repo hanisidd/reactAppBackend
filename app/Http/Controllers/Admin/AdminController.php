@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
-use App\Http\Requests\Admin\StoreAdminRequest;
-use App\Http\Requests\Admin\UpdateAdminRequest;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class AdminController extends Controller
 {
@@ -20,8 +20,17 @@ class AdminController extends Controller
             'admins' => $admins,
         ]);
     }
-    public function store(StoreAdminRequest $request)
+
+    public function store(Request $request)
     {
+        // 1. Inline Validation for Creating an Admin
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:admins,email',
+            'password' => 'required|string|min:6',
+        ]);
+
+        // 2. Create Admin
         $admin = Admin::create([
             'name' => $request->name,
             'email' => $request->email,
@@ -38,10 +47,17 @@ class AdminController extends Controller
         ], 201);
     }
 
-    public function update(UpdateAdminRequest $request, $id)
+    public function update(Request $request, $id)
     {
         $admin = Admin::findOrFail($id);
 
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:admins,email,' . $id,
+            'password' => 'nullable|string|min:6',
+        ]);
+
+        // 2. Update Admin Details
         $admin->name = $request->name;
         $admin->email = $request->email;
 
@@ -60,20 +76,58 @@ class AdminController extends Controller
             ]),
         ]);
     }
-    public function destroy($id)
-{
-    $admin = Admin::findOrFail($id);
 
-    if ($admin->id === auth()->id()) {
+    public function destroy($id)
+    {
+        $admin = Admin::findOrFail($id);
+
+        if ($admin->id === auth()->id()) {
+            return response()->json([
+                'message' => 'You cannot delete your own account.',
+            ], 403);
+        }
+
+        $admin->delete();
+
         return response()->json([
-            'message' => 'You cannot delete your own account.',
-        ], 403);
+            'message' => 'Admin deleted successfully.',
+        ]);
     }
 
-    $admin->delete();
+    public function updateProfile(Request $request)
+    {
+        $admin = auth()->user();
 
-    return response()->json([
-        'message' => 'Admin deleted successfully.',
-    ]);
-}
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:admins,email,' . $admin->id,
+            'password' => 'nullable|min:6',
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+
+        $admin->name = $request->name;
+        $admin->email = $request->email;
+
+        if ($request->filled('password')) {
+            $admin->password = Hash::make($request->password);
+        }
+
+        if ($request->hasFile('avatar')) {
+            // Delete old avatar if exists
+            if ($admin->avatar && Storage::disk('public')->exists($admin->avatar)) {
+                Storage::disk('public')->delete($admin->avatar);
+            }
+
+            // Store new avatar
+            $path = $request->file('avatar')->store('avatars', 'public');
+            $admin->avatar = $path;
+        }
+
+        $admin->save();
+
+        return response()->json([
+            'message' => 'Profile updated successfully.',
+            'admin' => $admin,
+        ]);
+    }
 }

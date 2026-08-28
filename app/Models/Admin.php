@@ -20,4 +20,11 @@ class Admin extends Authenticatable
         'password',
         'remember_token',
     ];
+    // Appends full public URL for avatar
+    protected $appends = ['avatar_url'];
+
+    public function getAvatarUrlAttribute()
+    {
+        return $this->avatar ? asset('storage/' . $this->avatar) : null;
+    }
 }

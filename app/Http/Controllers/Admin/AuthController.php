@@ -3,16 +3,22 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\LoginRequest;
 use App\Models\Admin;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
-    public function login(LoginRequest $request): JsonResponse
+    public function login(Request $request): JsonResponse
     {
+        // 1. Inline Validation for Admin Login
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required|string',
+        ]);
+
+        // 2. Authenticate Admin
         $admin = Admin::where('email', $request->email)->first();
 
         if (!$admin || !Hash::check($request->password, $admin->password)) {
@@ -29,6 +35,7 @@ class AuthController extends Controller
             'admin' => $admin,
         ]);
     }
+
     public function me(Request $request): JsonResponse
     {
         return response()->json([
