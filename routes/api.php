@@ -16,25 +16,26 @@ use App\Http\Controllers\Api\UserAuthController;
 use App\Http\Controllers\Api\ContactController;
 
 // Public Storefront Routes
-Route::get('/store/public-settings', [SettingController::class, 'getPublicSettings']);
-Route::get('/store/products', [StorefrontController::class, 'getProducts']);
-Route::get('/store/products/featured', [StorefrontController::class, 'getFeaturedProducts']);
-Route::get('/store/products/{id}', [StorefrontController::class, 'getProduct']);
-Route::get('/store/categories', [StorefrontController::class, 'getCategories']);
-Route::get('/store/checkout-settings', [StorefrontController::class, 'getCheckoutSettings']);
-Route::post('/store/promo/validate', [StorefrontController::class, 'validatePromoCode']);
-Route::post('/store/checkout', [StorefrontController::class, 'checkout']);
-Route::post('/store/contact', [ContactController::class, 'storeMessage']);
+Route::get('/public-settings', [SettingController::class, 'getPublicSettings']);
+Route::get('/products', [StorefrontController::class, 'getProducts']);
+Route::get('/products/featured', [StorefrontController::class, 'getFeaturedProducts']);
+Route::get('/products/{id}', [StorefrontController::class, 'getProduct']);
+Route::get('/categories', [StorefrontController::class, 'getCategories']);
+Route::get('/checkout-settings', [StorefrontController::class, 'getCheckoutSettings']);
+Route::post('/promo/validate', [StorefrontController::class, 'validatePromoCode']);
+Route::post('/checkout', [StorefrontController::class, 'checkout']);
+Route::post('/contact', [ContactController::class, 'storeMessage']);
 
 // Public User Authentication
-Route::post('/user/register', [UserAuthController::class, 'register']);
-Route::post('/user/login', [UserAuthController::class, 'login']);
+Route::post('/register', [UserAuthController::class, 'register']);
+Route::post('/login', [UserAuthController::class, 'login']);
 
 // Authenticated User Endpoints
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/user/profile', [UserAuthController::class, 'profile']);
-    Route::put('/user/profile', [UserAuthController::class, 'updateProfile']);
-    Route::post('/user/profile', [UserAuthController::class, 'updateProfile']);
+    Route::get('/profile', [UserAuthController::class, 'profile']);
+    Route::put('/profile', [UserAuthController::class, 'updateProfile']);
+    Route::post('/profile', [UserAuthController::class, 'updateProfile']);
+    Route::get('/orders', [UserAuthController::class, 'orders']);
 });
 
 // Admin Control Panel
@@ -71,8 +72,8 @@ Route::prefix('admin')->group(function () {
         Route::delete('/promos/{id}', [PromoCodeController::class, 'destroy']);
 
         Route::get('/orders', [OrderController::class, 'index']);
-        Route::get('/orders/{id}', [OrderController::class, 'show']);
         Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
+        Route::post('/orders/{id}/send-email', [OrderController::class, 'sendProductEmail']);
 
         Route::get('/dashboard', [DashboardController::class, 'index']);
 

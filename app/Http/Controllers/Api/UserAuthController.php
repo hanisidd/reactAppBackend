@@ -105,4 +105,13 @@ class UserAuthController extends Controller
             'user' => $user,
         ]);
     }
+    public function orders(Request $request)
+    {
+        $orders = \App\Models\Order::where('user_id', $request->user()->id)
+            ->with(['items.product.images', 'product.images'])
+            ->latest()
+            ->get();
+
+        return response()->json(['orders' => $orders]);
+    }
 }

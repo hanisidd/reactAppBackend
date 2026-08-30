@@ -25,19 +25,36 @@ class SettingController extends Controller
     public function update(Request $request)
     {
         $textFields = [
-            'brand_name', 'hero_heading', 'hero_text', 'tax_percentage',
-            'delivery_fee', 'footer_phone', 'footer_email', 'footer_address',
-            'footer_whatsapp', 'footer_instagram', 'footer_facebook', 'footer_about',
-            // About Us Page Fields
-            'about_heading', 'about_description',
-            'about_f1_title', 'about_f1_desc',
-            'about_f2_title', 'about_f2_desc',
-            'about_f3_title', 'about_f3_desc',
-            // Email Templates
-            'digital_email_subject', 'digital_email_body',
-            'order_confirmation_subject', 'order_confirmation_body',
-            'order_preparing_subject', 'order_preparing_body',
-            'order_delivered_subject', 'order_delivered_body',
+            'brand_name',
+            'hero_heading',
+            'hero_text',
+            'tax_percentage',
+            'delivery_fee',
+            'footer_phone',
+            'footer_email',
+            'footer_address',
+            'footer_whatsapp',
+            'footer_instagram',
+            'footer_facebook',
+            'footer_about',
+            'about_heading',
+            'about_description',
+            'about_f1_title',
+            'about_f1_desc',
+            'about_f2_title',
+            'about_f2_desc',
+            'about_f3_title',
+            'about_f3_desc',
+            'digital_email_subject',
+            'digital_email_body',
+            'order_confirmation_subject',
+            'order_confirmation_body',
+            'order_preparing_subject',
+            'order_preparing_body',
+            'order_delivered_subject',
+            'order_delivered_body',
+            'order_cancelled_subject',
+            'order_cancelled_body', // NEW
         ];
 
         foreach ($textFields as $field) {
