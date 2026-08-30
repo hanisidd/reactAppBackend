@@ -5,14 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class SettingController extends Controller
 {
     public function index()
     {
         $settings = Setting::pluck('value', 'key')->all();
-        
+
         if (!empty($settings['logo_path'])) {
             $settings['logo_url'] = asset('storage/' . $settings['logo_path']);
         }
@@ -28,7 +27,17 @@ class SettingController extends Controller
         $textFields = [
             'brand_name', 'hero_heading', 'hero_text', 'tax_percentage',
             'delivery_fee', 'footer_phone', 'footer_email', 'footer_address',
-            'footer_whatsapp', 'footer_instagram', 'footer_facebook', 'footer_about'
+            'footer_whatsapp', 'footer_instagram', 'footer_facebook', 'footer_about',
+            // About Us Page Fields
+            'about_heading', 'about_description',
+            'about_f1_title', 'about_f1_desc',
+            'about_f2_title', 'about_f2_desc',
+            'about_f3_title', 'about_f3_desc',
+            // Email Templates
+            'digital_email_subject', 'digital_email_body',
+            'order_confirmation_subject', 'order_confirmation_body',
+            'order_preparing_subject', 'order_preparing_body',
+            'order_delivered_subject', 'order_delivered_body',
         ];
 
         foreach ($textFields as $field) {
@@ -53,16 +62,16 @@ class SettingController extends Controller
     public function getPublicSettings()
     {
         $settings = Setting::pluck('value', 'key')->all();
-        
+
         $logoUrl = !empty($settings['logo_path']) ? asset('storage/' . $settings['logo_path']) : null;
         $heroUrl = !empty($settings['hero_image_path']) ? asset('storage/' . $settings['hero_image_path']) : null;
 
         return response()->json([
-            'brand_name' => !empty($settings['brand_name']) ? $settings['brand_name'] : 'DigitalStore',
+            'brand_name' => $settings['brand_name'] ?? 'DigitalStore',
             'logo_url' => $logoUrl,
             'hero_image_url' => $heroUrl,
-            'hero_heading' => !empty($settings['hero_heading']) ? $settings['hero_heading'] : 'Discover & Download Premium Products',
-            'hero_text' => !empty($settings['hero_text']) ? $settings['hero_text'] : 'Explore our curated collection of digital software, e-books, and high-quality physical merchandise.',
+            'hero_heading' => $settings['hero_heading'] ?? 'Discover & Download Premium Products',
+            'hero_text' => $settings['hero_text'] ?? 'Explore our curated collection of digital software, e-books, and high-quality physical merchandise.',
             'tax_percentage' => (float) ($settings['tax_percentage'] ?? 5),
             'delivery_fee' => (float) ($settings['delivery_fee'] ?? 250),
             'footer_phone' => $settings['footer_phone'] ?? '+92 300 1234567',
@@ -72,6 +81,14 @@ class SettingController extends Controller
             'footer_instagram' => $settings['footer_instagram'] ?? 'https://instagram.com',
             'footer_facebook' => $settings['footer_facebook'] ?? 'https://facebook.com',
             'footer_about' => $settings['footer_about'] ?? 'Your trusted store for instant digital downloads and physical products.',
+            'about_heading' => $settings['about_heading'] ?? 'About Our Store',
+            'about_description' => $settings['about_description'] ?? 'Providing top-notch digital downloads and physical products with quality and fast delivery.',
+            'about_f1_title' => $settings['about_f1_title'] ?? 'Instant Downloads',
+            'about_f1_desc' => $settings['about_f1_desc'] ?? 'Access your digital purchases immediately after checkout with direct email delivery.',
+            'about_f2_title' => $settings['about_f2_title'] ?? 'Trusted Shipping',
+            'about_f2_desc' => $settings['about_f2_desc'] ?? 'Fast and safe nationwide delivery for all physical goods across Pakistan.',
+            'about_f3_title' => $settings['about_f3_title'] ?? '24/7 Support',
+            'about_f3_desc' => $settings['about_f3_desc'] ?? 'Reach out anytime via email or WhatsApp for quick resolution of your inquiries.',
         ]);
     }
 }

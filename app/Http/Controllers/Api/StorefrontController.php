@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -14,22 +13,73 @@ use Illuminate\Support\Facades\Storage;
 
 class StorefrontController extends Controller
 {
-    // Fetch active products with category filter support
+    // Paginated, Filtered & Sorted Catalog for Big Datasets
     public function getProducts(Request $request)
     {
         $query = Product::with(['category', 'images'])
             ->where('status', 'active');
 
-        if ($request->has('category_id') && $request->category_id) {
+        // Search title or description
+        if ($request->filled('search')) {
+            $query->where(function ($q) use ($request) {
+                $q->where('title', 'like', '%' . $request->search . '%')
+                    ->orWhere('description', 'like', '%' . $request->search . '%');
+            });
+        }
+
+        // Filter by category
+        if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);
         }
 
-        return response()->json([
-            'products' => $query->latest()->get(),
-        ]);
+        // Filter by product format (digital vs physical)
+        if ($request->filled('type') && $request->type !== 'all') {
+            $query->where('type', $request->type);
+        }
+
+        // Price range filters
+        if ($request->filled('min_price')) {
+            $query->where('price', '>=', $request->min_price);
+        }
+        if ($request->filled('max_price')) {
+            $query->where('price', '<=', $request->max_price);
+        }
+
+        // Sorting
+        switch ($request->get('sort', 'newest')) {
+            case 'price_low':
+                $query->orderBy('price', 'asc');
+                break;
+            case 'price_high':
+                $query->orderBy('price', 'desc');
+                break;
+            case 'name_asc':
+                $query->orderBy('title', 'asc');
+                break;
+            case 'newest':
+            default:
+                $query->orderBy('created_at', 'desc');
+                break;
+        }
+
+        // Paginate results (default 12 items per page)
+        $perPage = $request->get('per_page', 12);
+        return response()->json($query->paginate($perPage));
     }
 
-    // Single product details with gallery
+    // Featured Products Showcase for Home Page
+    public function getFeaturedProducts()
+    {
+        $featured = Product::with(['category', 'images'])
+            ->where('status', 'active')
+            ->latest()
+            ->take(8)
+            ->get();
+
+        return response()->json(['products' => $featured]);
+    }
+
+    // Single product details
     public function getProduct($id)
     {
         $product = Product::with(['category', 'images'])
@@ -73,8 +123,8 @@ class StorefrontController extends Controller
     // Retrieve Store Tax & Delivery Fee settings
     public function getCheckoutSettings()
     {
-        $taxPercent = Setting::where('key', 'tax_percentage')->value('value') ?? 5; // Default 5%
-        $deliveryFee = Setting::where('key', 'delivery_fee')->value('value') ?? 10; // Default $10
+        $taxPercent = Setting::where('key', 'tax_percentage')->value('value') ?? 5;
+        $deliveryFee = Setting::where('key', 'delivery_fee')->value('value') ?? 250;
 
         return response()->json([
             'tax_percentage' => (float) $taxPercent,
@@ -82,49 +132,57 @@ class StorefrontController extends Controller
         ]);
     }
 
-    // Storefront Checkout Endpoint (Supports Guests & Logged-in Users)
     public function checkout(Request $request)
     {
         $request->validate([
             'customer_name' => 'required|string|max:255',
             'customer_email' => 'required|email',
             'customer_phone' => 'required|string',
-            'shipping_address' => 'required_if:has_physical,true|nullable|string',
-            'product_id' => 'required|exists:products,id',
+            'shipping_address' => 'nullable|string',
             'payment_method' => 'required|in:cod,advance',
-            'promo_code' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
         ]);
 
-        $product = Product::findOrFail($request->product_id);
+        $subtotal = 0;
+        $hasPhysical = false;
+        $hasDigital = false;
+        $orderItemsData = [];
 
-        // Payment restriction rule: Digital products require Advance Payment
-        if ($product->type === 'digital' && $request->payment_method === 'cod') {
-            return response()->json([
-                'message' => 'Cash on Delivery is not allowed for Digital Products. Please select Advance Payment.',
-            ], 422);
+        foreach ($request->items as $itemData) {
+            $product = Product::findOrFail($itemData['id']);
+            $qty = $product->type === 'digital' ? 1 : $itemData['quantity'];
+            $lineTotal = (float) $product->price * $qty;
+
+            $subtotal += $lineTotal;
+            if ($product->type === 'digital') {
+                $hasDigital = true;
+            } else {
+                $hasPhysical = true;
+            }
+
+            $orderItemsData[] = [
+                'product_id' => $product->id,
+                'unit_price' => $product->price,
+                'quantity' => $qty,
+                'line_total' => $lineTotal,
+            ];
         }
 
-        // Fetch Tax and Delivery settings from DB
+        if ($hasDigital && !$hasPhysical && $request->payment_method === 'cod') {
+            return response()->json(['message' => 'Cash on Delivery is not allowed for Digital downloads.'], 422);
+        }
+
         $taxPercent = (float) (Setting::where('key', 'tax_percentage')->value('value') ?? 5);
-        $flatDeliveryFee = (float) (Setting::where('key', 'delivery_fee')->value('value') ?? 10);
+        $flatDeliveryFee = (float) (Setting::where('key', 'delivery_fee')->value('value') ?? 250);
+        $deliveryFee = $hasPhysical ? $flatDeliveryFee : 0;
 
-        // Physical items incur delivery fees; digital items do not
-        $deliveryFee = $product->type === 'physical' ? $flatDeliveryFee : 0;
-        $subtotal = (float) $product->price;
-
-        // Apply Promo Code discount if provided
         $discountAmount = 0;
         if ($request->promo_code) {
-            $promo = PromoCode::where('code', strtoupper($request->promo_code))
-                ->where('status', 'active')
-                ->first();
-
+            $promo = PromoCode::where('code', strtoupper($request->promo_code))->where('status', 'active')->first();
             if ($promo) {
-                if ($promo->type === 'percentage') {
-                    $discountAmount = ($subtotal * $promo->value) / 100;
-                } else {
-                    $discountAmount = $promo->value;
-                }
+                $discountAmount = $promo->type === 'percentage' ? ($subtotal * $promo->value) / 100 : $promo->value;
             }
         }
 
@@ -132,14 +190,13 @@ class StorefrontController extends Controller
         $taxAmount = ($taxableAmount * $taxPercent) / 100;
         $totalAmount = $taxableAmount + $taxAmount + $deliveryFee;
 
-        // Create Order
         $order = Order::create([
             'user_id' => auth('sanctum')->check() ? auth('sanctum')->id() : null,
             'customer_name' => $request->customer_name,
             'customer_email' => $request->customer_email,
             'customer_phone' => $request->customer_phone,
             'shipping_address' => $request->shipping_address,
-            'product_id' => $product->id,
+            'product_id' => $orderItemsData[0]['product_id'],
             'subtotal' => $subtotal,
             'delivery_fee' => $deliveryFee,
             'tax_amount' => $taxAmount,
@@ -147,46 +204,16 @@ class StorefrontController extends Controller
             'total_amount' => $totalAmount,
             'payment_method' => $request->payment_method,
             'payment_status' => $request->payment_method === 'advance' ? 'paid' : 'pending',
-            'status' => 'failed', // Default status as requested
+            'status' => (!$hasPhysical && $hasDigital) ? 'delivered' : 'pending',
         ]);
 
-        // Send Order Confirmation Email
-        $this->sendOrderConfirmationEmail($order, $product);
+        foreach ($orderItemsData as $item) {
+            $order->items()->create($item);
+        }
 
         return response()->json([
             'message' => 'Order placed successfully!',
-            'order' => $order->load('product'),
+            'order' => $order->load('items.product.images'),
         ], 201);
-    }
-
-    private function sendOrderConfirmationEmail($order, $product)
-    {
-        try {
-            $subject = "Order Confirmation - #{$order->order_number}";
-            $body = "<h2>Thank you for your order, {$order->customer_name}!</h2>
-                     <p>Order Number: <strong>#{$order->order_number}</strong></p>
-                     <p>Product: {$product->title}</p>
-                     <p>Total Paid: \${$order->total_amount}</p>
-                     <p>Payment Method: " . strtoupper($order->payment_method) . "</p>";
-
-            // If digital product and advance payment, attach digital file directly
-            if ($product->type === 'digital' && $product->file_path && Storage::disk('public')->exists($product->file_path)) {
-                $fullPath = Storage::disk('public')->path($product->file_path);
-                Mail::html($body, function ($msg) use ($order, $subject, $fullPath, $product) {
-                    $msg->to($order->customer_email)
-                        ->subject($subject)
-                        ->attach($fullPath, ['as' => $product->file_original_name]);
-                });
-                $order->email_sent_at = now();
-                $order->save();
-            } else {
-                Mail::html($body, function ($msg) use ($order, $subject) {
-                    $msg->to($order->customer_email)->subject($subject);
-                });
-            }
-        } catch (\Exception $e) {
-            // Log error silently without failing checkout request
-            \Log::error("Order email error: " . $e->getMessage());
-        }
     }
 }

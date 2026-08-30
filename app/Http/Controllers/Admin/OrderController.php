@@ -12,24 +12,29 @@ class OrderController extends Controller
 {
     public function index()
     {
-        $orders = Order::with(['product.images'])
+        $orders = Order::with(['items.product.images', 'user'])
             ->latest()
             ->get();
 
-        return response()->json([
-            'orders' => $orders,
-        ]);
+        return response()->json(['orders' => $orders]);
     }
 
-    public function toggleStatus($id)
+    public function updateStatus(Request $request, $id)
     {
-        $order = Order::findOrFail($id);
-        $order->status = $order->status === 'failed' ? 'success' : 'failed';
+        $request->validate(['status' => 'required|string']);
+
+        $order = Order::with('items.product')->findOrFail($id);
+        $order->status = $request->status;
+
+        if ($request->status === 'delivered') {
+            $order->payment_status = 'paid';
+        }
+
         $order->save();
 
         return response()->json([
-            'message' => "Order status updated to {$order->status}.",
-            'order' => $order->load(['product.images']),
+            'message' => "Order status updated to {$request->status}.",
+            'order' => $order->load('items.product.images'),
         ]);
     }
 
@@ -45,7 +50,7 @@ class OrderController extends Controller
 
         // 1. Get full server path of the digital file
         $filePath = $order->product->file_path;
-        
+
         if (!Storage::disk('public')->exists($filePath)) {
             return response()->json([
                 'message' => 'File does not exist on server storage.',
@@ -56,16 +61,16 @@ class OrderController extends Controller
         $originalFileName = $order->product->file_original_name ?? basename($filePath);
 
         // 2. Fetch custom email template settings
-        $subjectTemplate = Setting::where('key', 'digital_email_subject')->value('value') 
+        $subjectTemplate = Setting::where('key', 'digital_email_subject')->value('value')
             ?? "Your Digital Product Purchase - {product_name}";
-        $bodyTemplate = Setting::where('key', 'digital_email_body')->value('value') 
+        $bodyTemplate = Setting::where('key', 'digital_email_body')->value('value')
             ?? "<p>Hi <strong>{customer_name}</strong>,</p><p>Thank you for your order <strong>#{order_id}</strong>! Please find your product <strong>{product_name}</strong> attached to this email.</p>";
 
         // 3. Replace dynamic variables
         $replacements = [
             '{customer_name}' => $order->customer_name,
-            '{product_name}'  => $order->product->title,
-            '{order_id}'       => $order->order_number,
+            '{product_name}' => $order->product->title,
+            '{order_id}' => $order->order_number,
         ];
 
         $subject = str_replace(array_keys($replacements), array_values($replacements), $subjectTemplate);
@@ -75,10 +80,10 @@ class OrderController extends Controller
             // 4. Send email with direct file attachment
             Mail::html($bodyHtml, function ($message) use ($order, $subject, $fullSystemPath, $originalFileName) {
                 $message->to($order->customer_email, $order->customer_name)
-                        ->subject($subject)
-                        ->attach($fullSystemPath, [
-                            'as' => $originalFileName, // Sets attachment name to customer-friendly name
-                        ]);
+                    ->subject($subject)
+                    ->attach($fullSystemPath, [
+                        'as' => $originalFileName, // Sets attachment name to customer-friendly name
+                    ]);
             });
 
             // 5. Automatically mark status as success and set timestamp
