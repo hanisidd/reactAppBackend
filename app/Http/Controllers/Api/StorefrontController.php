@@ -189,7 +189,6 @@ class StorefrontController extends Controller
         $taxableAmount = max(0, $subtotal - $discountAmount);
         $taxAmount = ($taxableAmount * $taxPercent) / 100;
         $totalAmount = $taxableAmount + $taxAmount + $deliveryFee;
-
         $order = Order::create([
             'user_id' => auth('sanctum')->check() ? auth('sanctum')->id() : null,
             'customer_name' => $request->customer_name,
@@ -203,17 +202,24 @@ class StorefrontController extends Controller
             'discount_amount' => $discountAmount,
             'total_amount' => $totalAmount,
             'payment_method' => $request->payment_method,
-            'payment_status' => $request->payment_method === 'advance' ? 'paid' : 'pending',
-            'status' => (!$hasPhysical && $hasDigital) ? 'delivered' : 'pending',
+            // Payment is no longer marked "paid" here — that was never true, since
+            // no gateway had actually been charged. It stays 'pending' until the
+            // Safepay callback/verify confirms a real payment (see PaymentController).
+            'payment_status' => 'pending',
+            'status' => (!$hasPhysical && $hasDigital && $request->payment_method !== 'advance') ? 'delivered' : 'pending',
         ]);
 
         foreach ($orderItemsData as $item) {
             $order->items()->create($item);
         }
 
+        app(\App\Services\OrderEmailService::class)->send($order, 'order_placed');
+
         return response()->json([
             'message' => 'Order placed successfully!',
             'order' => $order->load('items.product.images'),
+            // Frontend uses this to decide whether to redirect to the gateway
+            'requires_payment' => $request->payment_method === 'advance' || ($hasDigital && $hasPhysical),
         ], 201);
     }
 }

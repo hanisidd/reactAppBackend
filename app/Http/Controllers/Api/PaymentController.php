@@ -10,9 +10,9 @@ use Illuminate\Http\Request;
 class PaymentController extends Controller
 {
     /**
-     * Called right after an order is created with payment_method = 'advance'.
-     * Returns the redirect target + signed fields for the frontend to
-     * auto-submit to the gateway's hosted page.
+     * Called right after an order is created with payment_method = 'advance'
+     * (or the digital portion of a mixed COD order — see checkout()).
+     * Returns the redirect target for the frontend to send the browser to.
      */
     public function initiate(Request $request, $orderId)
     {
@@ -32,35 +32,52 @@ class PaymentController extends Controller
         $order->payment_gateway = $gateway->key();
         $order->save();
 
-        $payload = $gateway->initiate($order);
+        try {
+            $payload = $gateway->initiate($order);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 502);
+        }
 
         return response()->json($payload);
     }
 
     /**
-     * JazzCash (and future gateways) POST the transaction result here.
-     * This must independently verify the payload — never trust status
-     * fields without checking the signature (handled inside the gateway).
+     * Called by the frontend right after the browser is redirected back
+     * from the gateway (e.g. /payment/return?tracker=...&order_id=...).
+     * Independently re-verifies the payment server-to-server before
+     * trusting anything from the query string.
+     */
+    public function verify(Request $request, string $gatewayKey)
+    {
+        return $this->processResult($gatewayKey, $request->all());
+    }
+
+    /**
+     * Server-to-server webhook endpoint, if/when the gateway supports one.
      */
     public function callback(Request $request, string $gatewayKey)
     {
+        return $this->processResult($gatewayKey, $request->all());
+    }
+
+    private function processResult(string $gatewayKey, array $payload)
+    {
         $gateway = PaymentGatewayManager::make($gatewayKey);
-        $result = $gateway->handleCallback($request->all());
+        $result = $gateway->handleCallback($payload);
 
         if (!$result['order_number']) {
-            return response()->json(['message' => 'Missing order reference.'], 422);
+            return response()->json(['message' => 'Missing order reference.', 'success' => false], 422);
         }
 
         $order = Order::where('order_number', $result['order_number'])->first();
 
         if (!$order) {
-            return response()->json(['message' => 'Order not found.'], 404);
+            return response()->json(['message' => 'Order not found.', 'success' => false], 404);
         }
 
-        // Idempotency guard: if we've already marked this paid (e.g. the
-        // gateway retries the webhook), don't reprocess it.
+        // Idempotency guard — gateways may call this more than once.
         if ($order->payment_status === 'paid') {
-            return response()->json(['message' => 'Already processed.', 'order' => $order]);
+            return response()->json(['message' => 'Already processed.', 'success' => true, 'order' => $order]);
         }
 
         $order->gateway_transaction_id = $result['transaction_id'];

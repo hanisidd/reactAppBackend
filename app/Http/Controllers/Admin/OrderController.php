@@ -7,6 +7,7 @@ use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use App\Services\OrderEmailService;
 
 class OrderController extends Controller
 {
@@ -32,7 +33,8 @@ class OrderController extends Controller
 
         $order->save();
 
-        $emailSent = $this->sendStatusEmail($order, $request->status);
+        $emailSent = app(OrderEmailService::class)->send($order, $request->status);
+
 
         return response()->json([
             'message' => $emailSent
@@ -40,73 +42,6 @@ class OrderController extends Controller
                 : "Order status updated to {$request->status}.",
             'order' => $order->load('items.product.images'),
         ]);
-    }
-
-    /**
-     * Sends a status-change notification email using the admin-configured
-     * template for the given status. Returns true if an email was sent.
-     */
-    private function sendStatusEmail(Order $order, string $status): bool
-    {
-        $templateMap = [
-            'confirmed' => [
-                'subjectKey' => 'order_confirmation_subject',
-                'bodyKey' => 'order_confirmation_body',
-                'defaultSubject' => 'Order Confirmed - {order_id}',
-                'defaultBody' => '<p>Hi <strong>{customer_name}</strong>,</p><p>Your order <strong>{order_id}</strong> has been received and confirmed. We will notify you as it progresses.</p>',
-            ],
-            'preparing' => [
-                'subjectKey' => 'order_preparing_subject',
-                'bodyKey' => 'order_preparing_body',
-                'defaultSubject' => 'Your Order {order_id} is Being Prepared',
-                'defaultBody' => '<p>Hi <strong>{customer_name}</strong>,</p><p>Your order <strong>{order_id}</strong> for <strong>{product_name}</strong> is now being prepared.</p>',
-            ],
-            'delivered' => [
-                'subjectKey' => 'order_delivered_subject',
-                'bodyKey' => 'order_delivered_body',
-                'defaultSubject' => 'Your Order {order_id} Has Been Delivered',
-                'defaultBody' => '<p>Hi <strong>{customer_name}</strong>,</p><p>Your order <strong>{order_id}</strong> has been delivered. Thank you for shopping with us!</p>',
-            ],
-            'cancelled' => [
-                'subjectKey' => 'order_cancelled_subject',
-                'bodyKey' => 'order_cancelled_body',
-                'defaultSubject' => 'Order {order_id} Cancelled',
-                'defaultBody' => '<p>Hi <strong>{customer_name}</strong>,</p><p>Your order <strong>{order_id}</strong> has been cancelled. If this was a mistake, please contact our support team.</p>',
-            ],
-        ];
-
-        if (!isset($templateMap[$status])) {
-            return false;
-        }
-
-        $tpl = $templateMap[$status];
-
-        $subjectTemplate = Setting::where('key', $tpl['subjectKey'])->value('value') ?? $tpl['defaultSubject'];
-        $bodyTemplate = Setting::where('key', $tpl['bodyKey'])->value('value') ?? $tpl['defaultBody'];
-
-        $productName = optional($order->product)->title
-            ?? optional(optional($order->items->first())->product)->title
-            ?? 'Your Order';
-
-        $replacements = [
-            '{customer_name}' => $order->customer_name,
-            '{order_id}' => $order->order_number,
-            '{product_name}' => $productName,
-        ];
-
-        $subject = str_replace(array_keys($replacements), array_values($replacements), $subjectTemplate);
-        $bodyHtml = str_replace(array_keys($replacements), array_values($replacements), $bodyTemplate);
-
-        try {
-            Mail::html($bodyHtml, function ($message) use ($order, $subject) {
-                $message->to($order->customer_email, $order->customer_name)
-                    ->subject($subject);
-            });
-            return true;
-        } catch (\Exception $e) {
-            // Status update should still succeed even if the mail server is unreachable.
-            return false;
-        }
     }
 
     public function sendProductEmail($id)

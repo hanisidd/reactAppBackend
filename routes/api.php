@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\PaymentController;
 
 Route::post('/payments/{orderId}/initiate', [PaymentController::class, 'initiate']);
+Route::get('/payments/{gateway}/verify', [PaymentController::class, 'verify']);
 Route::post('/payments/{gateway}/callback', [PaymentController::class, 'callback']);
 // Public Storefront Routes
 Route::get('/public-settings', [SettingController::class, 'getPublicSettings']);
