@@ -14,7 +14,10 @@ use App\Http\Controllers\Admin\ContactMessageController;
 use App\Http\Controllers\Api\StorefrontController;
 use App\Http\Controllers\Api\UserAuthController;
 use App\Http\Controllers\Api\ContactController;
+use App\Http\Controllers\Api\PaymentController;
 
+Route::post('/payments/{orderId}/initiate', [PaymentController::class, 'initiate']);
+Route::post('/payments/{gateway}/callback', [PaymentController::class, 'callback']);
 // Public Storefront Routes
 Route::get('/public-settings', [SettingController::class, 'getPublicSettings']);
 Route::get('/products', [StorefrontController::class, 'getProducts']);

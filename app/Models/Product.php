@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Product extends Model
 {
-    protected $fillable = [
+
+use  HasFactory;
+protected $fillable = [
         'type',
         'category_id',
         'title',
@@ -19,7 +22,7 @@ class Product extends Model
         'file_size',
     ];
 
-    protected $appends = ['formatted_file_size', 'file_url'];
+    // protected $appends = ['formatted_file_size', 'file_url'];
 
     public function getFileUrlAttribute()
     {

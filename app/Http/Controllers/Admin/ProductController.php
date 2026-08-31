@@ -9,15 +9,38 @@ use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
-    public function index()
-    {
-        $products = Product::with(['category', 'images'])
-            ->latest()
-            ->get();
+    private const SORTABLE_COLUMNS = ['title', 'type', 'price', 'quantity', 'status', 'created_at'];
 
-        return response()->json([
-            'products' => $products,
-        ]);
+    public function index(Request $request)
+    {
+        $query = Product::with(['category', 'images']);
+
+        if ($request->filled('search')) {
+            $search = $request->string('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                    ->orWhere('file_original_name', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('type') && $request->input('type') !== 'all') {
+            $query->where('type', $request->input('type'));
+        }
+
+        if ($request->filled('status') && $request->input('status') !== 'all') {
+            $query->where('status', $request->input('status'));
+        }
+
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortDir = $request->input('sort_dir', 'desc') === 'asc' ? 'asc' : 'desc';
+        if (!in_array($sortBy, self::SORTABLE_COLUMNS, true)) {
+            $sortBy = 'created_at';
+        }
+        $query->orderBy($sortBy, $sortDir);
+
+        $perPage = min((int) $request->input('per_page', 10), 100);
+
+        return response()->json($query->paginate($perPage));
     }
 
     public function store(Request $request)
@@ -40,7 +63,6 @@ class ProductController extends Controller
         $originalName = null;
         $fileSize = null;
 
-        // Process file only if product type is digital
         if ($request->type === 'digital' && $request->hasFile('digital_file')) {
             $file = $request->file('digital_file');
             $originalName = $file->getClientOriginalName();
@@ -61,7 +83,6 @@ class ProductController extends Controller
             'file_size' => $fileSize,
         ]);
 
-        // Process images
         if ($request->hasFile('images')) {
             $coverIndex = (int) $request->input('cover_index', 0);
             foreach ($request->file('images') as $index => $file) {
@@ -99,9 +120,7 @@ class ProductController extends Controller
             'retained_image_ids' => 'nullable|array',
         ]);
 
-        // Handle digital file update or conversion to physical
         if ($request->type === 'physical') {
-            // If switched to physical, delete old file if present
             if ($product->file_path && Storage::disk('public')->exists($product->file_path)) {
                 Storage::disk('public')->delete($product->file_path);
             }
@@ -128,7 +147,6 @@ class ProductController extends Controller
             'status' => $request->status,
         ]);
 
-        // Images retaining & ordering
         $retainedIds = $request->input('retained_image_ids', []);
         $imagesToDelete = $product->images()->whereNotIn('id', $retainedIds)->get();
 
@@ -167,6 +185,7 @@ class ProductController extends Controller
             'product' => $product->load(['category', 'images']),
         ]);
     }
+
     public function toggleStatus($id)
     {
         $product = Product::findOrFail($id);
@@ -183,12 +202,10 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
 
-        // Delete digital file
         if ($product->file_path && Storage::disk('public')->exists($product->file_path)) {
             Storage::disk('public')->delete($product->file_path);
         }
 
-        // Delete product images
         foreach ($product->images as $img) {
             if (Storage::disk('public')->exists($img->image_path)) {
                 Storage::disk('public')->delete($img->image_path);
